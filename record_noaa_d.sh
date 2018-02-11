@@ -1,13 +1,24 @@
 #!/bin/bash
 # See /usr/local/bin/wxctl for client
 
+# Get absolute path to this script
+BASE_PATH=$(realpath $(dirname $0))
+
+# Path to bulk storage for recordings
+STORAGE_PATH=/media/pi/USB_DISK/
+
 # Expect commands through this fifo
 CMD_FIFO=/tmp/record_noaa_cmd
+
+# Audio will be published through this pipe at 11025 Hz S16LE
+AUDIO_PIPE=/tmp/noaa_audio_pipe
 
 # Cleanup on exit
 function on_exit {
   echo "Cleaning up..."
   pkill --signal SIGINT luajit
+  exec 3>&-				# Allow audio pipe to close
+  rm -f $AUDIO_PIPE
   rm -f $CMD_FIFO
   exit
 }
@@ -19,30 +30,57 @@ trap on_exit SIGHUP SIGINT SIGTERM
 rm -f $CMD_FIFO
 mkfifo $CMD_FIFO
 
+# Create new audio pipe 
+rm -f $AUDIO_PIPE
+mkfifo $AUDIO_PIPE
+
+# Setup audio environment for sox
+export AUDIODRIVER=alsa			# Use ALSA driver
+export AUDIODEV=hw:Loopback,0,0	# Use ALSA loopback (output will be on hw:Loopback,0,1)
+
+# Attach resampler and hold pipe open
+cat $AUDIO_PIPE | play -q -V0 -t raw -e s -b 16 -L -c 1 -r 11025 - -V0 -c 1 &
+exec 3>$AUDIO_PIPE		# Keep audio pipe open even if writer closes
+
+# Start WxToImg in record mode
+#/usr/local/bin/xwxtoimg &
+
+# Initialise variables
+FILENAME=""
+COMMENT=""
+SATELLITE=""
+FREQUENCY=""
+
 # Main loop
 echo "Waiting..."
 while true; do
   if read line <$CMD_FIFO; then
+    echo "`date -u +"%Y%^b%d-%H%M%S%Z"`: "$line
     params=($line)
 
-    # Look for start command (e.g. start noaa15 137.620M)
+    # Look for start command to start recording (e.g. start NOAA-15 137.620M)
     if [[ "${params[0]}" == 'start' ]]; then
-      echo "`date`: Seen start: "$line
-      FILENAME="/home/pi/wx/"$(date +"%Y%m%d%H%M%S")".wav"
-      COMMENT=${params[1]}_$(date +"%Y%^b%d-%H%M%S%Z")
-      echo "Recording: "$FILENAME
-      luaradio rtlsdr_noaa_apt.lua "${params[2]/M/e6}" $FILENAME &
+      if [ -z "$FILENAME" ]; then	# If a recording is in progress then ignore command
+        echo "================================================================================"
+        FILENAME=${STORAGE_PATH}"audio/"$(date -u +"%Y%m%d%H%M%S")".wav"
+        SATELLITE="${params[1]}"
+        FREQUENCY="${params[2]/M/e6}"
+        COMMENT=${SATELLITE}"_"$(date -u +"%Y%^b%d-%H%M%S%Z")
+        luaradio rtlsdr_noaa_apt.lua $FREQUENCY $FILENAME &
+      else
+        echo "WARNING: Ignoring start - recording already in progress..."  
+      fi
 
-    # Look for stop command (e.g. stop)
+    # Look for stop command to stop recording (e.g. stop)
     elif [[ "${params[0]}" == 'stop' ]]; then
-      echo "`date`: Seen stop: "$line
-      pkill --signal SIGINT luajit
-      sleep 5s
-      ./process_recording.sh $FILENAME &
+      if [ -n "$FILENAME" ]; then	# Only process files once (can get multiple stops)
+        pkill --signal SIGINT luajit
+        ./process_recording.sh "$FILENAME" "$SATELLITE" &
+        FILENAME=""
+      fi
 
     # Look for quit command (e.g. quit)
     elif [[ "${params[0]}" == 'quit' ]]; then
-      echo "`date`: Seen quit: "$line
       break
 
     # Invalid command
