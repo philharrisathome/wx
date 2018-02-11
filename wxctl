@@ -1,0 +1,44 @@
+#!/bin/bash
+# wxctl is called by wxtoimg at the start and end of every satellite pass.
+# This script forwards start and stop commands and recording parameters 
+# to the command queue of record_noaa_d.sh
+# Only NOAA 15,18, and 19 are supported - any other requests are silently 
+# discarded.
+# This file should be copied to /usr/local/bin/wxctl so that it can be 
+# found by wxtoimg
+
+CMD_FIFO=/tmp/record_noaa_cmd
+LOGFILE=/tmp/wxctl.log
+
+# Check to see if CMD_FIFO exists
+if [[ ! -p $CMD_FIFO ]]; then
+  echo "ERROR: Command CMD_FIFO not found" >> $LOGFILE
+  exit 1
+fi
+
+# Replace spaces with - in the satellite name to allow it to be passed as single parameter
+case "$1" in
+'NOAA 15' )
+  # Record from NOAA 15
+  echo $(date -u +"%Y%^b%d-%H%M%S%Z")": Recording "$1" on "$2 >> $LOGFILE
+  echo "start NOAA-15 137.620M" > $CMD_FIFO
+;;
+'NOAA 18' )
+  # Record from NOAA 18
+  echo $(date -u +"%Y%^b%d-%H%M%S%Z")": Recording "$1" on "$2 >> $LOGFILE
+  echo "start NOAA-18 137.9125M" > $CMD_FIFO
+;;
+'NOAA 19' )
+  # Record from NOAA 19
+  echo $(date -u +"%Y%^b%d-%H%M%S%Z")": Recording "$1" on "$2 >> $LOGFILE
+  echo "start NOAA-19 137.100M" > $CMD_FIFO
+;;
+* )
+  # Stop recording
+  echo $(date -u +"%Y%^b%d-%H%M%S%Z")": Stopping" >> $LOGFILE
+  echo "stop" > $CMD_FIFO
+;;
+esac
+
+exit 0
+
