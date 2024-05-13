@@ -13,6 +13,9 @@ CMD_FIFO=/tmp/record_noaa_cmd
 # Audio will be published through this pipe at 11025 Hz S16LE
 AUDIO_PIPE=/tmp/noaa_audio_pipe
 
+# Path to the luaradio runtime
+LUARADIO=${HOME}/luaradio/luaradio
+
 # Cleanup on exit
 function on_exit {
   echo "Cleaning up..."
@@ -35,10 +38,12 @@ rm -f $AUDIO_PIPE
 mkfifo $AUDIO_PIPE
 
 # Setup audio environment for sox
+# Use sudo modprobe snd-aloop to create loopback, and add snd-aloop to /etc/modules
 export AUDIODRIVER=alsa			# Use ALSA driver
 export AUDIODEV=hw:Loopback,0,0	# Use ALSA loopback (output will be on hw:Loopback,0,1)
 
 # Attach resampler and hold pipe open
+# Play requires sox
 cat $AUDIO_PIPE | play -q -V0 -t raw -e s -b 16 -L -c 1 -r 11025 - -V0 -c 1 &
 exec 3>$AUDIO_PIPE		# Keep audio pipe open even if writer closes
 
@@ -66,7 +71,7 @@ while true; do
         SATELLITE="${params[1]}"
         FREQUENCY="${params[2]/M/e6}"
         COMMENT=${SATELLITE}"_"$(date -u +"%Y%^b%d-%H%M%S%Z")
-        luaradio rtlsdr_noaa_apt.lua $FREQUENCY $FILENAME &
+        ${LUARADIO} rtlsdr_noaa_apt.lua $FREQUENCY $FILENAME &
       else
         echo "WARNING: Ignoring start - recording already in progress..."  
       fi

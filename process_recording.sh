@@ -30,7 +30,9 @@ echo "Processing recording: "$INPUT_FILE" for "$SATELLITE
 
 # Get pass start time (date of last access)
 # Need format of "26 Oct 2001 23:22:00 UTC"
-PASS_START_TIME=$(date -d @`stat -c %X "$INPUT_FILE"` -u +"%d %b %Y %H:%M:%S %Z")
+D=${INPUT_FILE##*/}   # Remove path
+D=${D%%.wav}          # Remove extension
+PASS_START_TIME=$(date -d "${D:0:8} ${D:8:2}:${D:10:2}:${D:12:2}" -u +"%d %b %Y %H:%M:%S %Z")
 echo "Recording start time: "$PASS_START_TIME
 
 # Generate map if it doesn't exist
@@ -38,7 +40,8 @@ INPUT_BASENAME=$(basename $INPUT_FILE)
 MAP_FILE=${MAPS_PATH}${INPUT_BASENAME%".wav"}".map"
 if [[ ! -e $MAP_FILE ]]; then
   echo "Generating map: "$MAP_FILE
-  PASS_SUMMARY="$(wxmap -T "$SATELLITE" -M 10 -b 0 -d -o "$PASS_START_TIME" "$MAP_FILE" 2>&1)"
+  PASS_SUMMARY="$(wxmap -T "${SATELLITE}" -M 10 -b 0 -d -a -o "${PASS_START_TIME}" "$MAP_FILE" 2>&1)"
+  # echo $PASS_SUMMARY
 else
   echo "Using map: "$MAP_FILE
   PASS_SUMMARY="No pass information available - Using previously generated map."
@@ -94,11 +97,15 @@ else
   echo "$IMAGE_FILE" > $LAST_GENERATED_FILE
 fi
 
-# Remove old recordings
+# Remove old recordings & maps after 1 day
 find ${AUDIO_PATH} -mindepth 1 -mtime +1 -delete
-
-# Remove old maps
 find ${MAPS_PATH} -mindepth 1 -mtime +1 -delete
+
+# Remove old raw images, processed images, and composites after 60 days
+# In practice 4GB card is full after ~75 days
+find ${RAW_PATH} -mindepth 1 -mtime +30 -delete
+find ${IMAGES_PATH} -mindepth 1 -mtime +30 -delete
+find ${COMPOSITES_PATH} -mindepth 1 -mtime +30 -delete
 
 # Remove empty recordings from wxtoimg
 rm -f ~/wxtoimg/audio/*.wav

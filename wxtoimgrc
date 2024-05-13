@@ -268,7 +268,7 @@ Exclude from Composites:
 Exclude from Web: 
 Minimum Scan Lines: 0
 Use MCIR if MSA fails: false
-Kepler Host: www.celestrak.com
+Kepler Host: www.celestrak.org
 Kepler Login: 
 Kepler Passphrase: 
 Use Proxy: false
